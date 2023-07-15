@@ -33,6 +33,14 @@ from torch.utils.data import DataLoader, random_split
 from utils import *
 import function 
 
+def setup_seed(seed):
+     torch.manual_seed(seed)
+     torch.cuda.manual_seed_all(seed)
+     np.random.seed(seed)
+     random.seed(seed)
+     torch.backends.cudnn.deterministic = True
+
+setup_seed(0)
 
 args = cfg.parse_args()
 
@@ -100,6 +108,15 @@ if args.dataset == 'isic':
     nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
     '''end'''
 
+elif args.dataset == 'building_v1':
+    '''buiding data'''
+    isic_train_dataset = Building_v1(args, args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
+    isic_test_dataset = Building_v1(args, args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+
+    nice_train_loader = DataLoader(isic_train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
+    nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+    '''end'''
+
 elif args.dataset == 'decathlon':
     nice_train_loader, nice_test_loader, transform_train, transform_val, train_list, val_list =get_decath_loader(args)
 
@@ -123,8 +140,11 @@ checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 '''begain training'''
 best_acc = 0.0
 best_tol = 1e4
-for epoch in range(settings.EPOCH):
+threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
+for epoch in range(args.epoch):
     if args.mod == 'sam_adpt':
+        tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, threshold, net, writer)
+        logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
         net.train()
         time_start = time.time()
         loss = function.train_sam(args, net, optimizer, nice_train_loader, epoch, writer, vis = args.vis)
@@ -133,8 +153,8 @@ for epoch in range(settings.EPOCH):
         print('time_for_training ', time_end - time_start)
 
         net.eval()
-        if epoch and epoch % args.val_freq == 0 or epoch == settings.EPOCH-1:
-            tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
+        if epoch % args.val_freq == 0 or epoch == args.epoch:
+            tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, threshold, net, writer)
             logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
 
             if args.distributed != 'none':
