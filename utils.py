@@ -967,6 +967,8 @@ def hook_model(model, image_f):
 
 def vis_image(imgs, pred_masks, gt_masks, save_path, reverse = False, points = None):
     
+    # convert points to y, x
+    points = points.flip(1)
     b,c,h,w = pred_masks.size()
     dev = pred_masks.get_device()
     row_num = min(b, 4)
@@ -1014,46 +1016,29 @@ def eval_seg(pred,true_mask_p,threshold):
     pred: [b,2,h,w]
     '''
     b, c, h, w = pred.size()
-    if c == 2:
-        iou_d, iou_c, disc_dice, cup_dice = 0,0,0,0
-        for th in threshold:
+    thres_wise_res_iou = []
+    thres_wise_dice_score = []
 
-            gt_vmask_p = (true_mask_p > th).float()
-            vpred = (pred > th).float()
-            vpred_cpu = vpred.cpu()
-            disc_pred = vpred_cpu[:,0,:,:].numpy().astype('int32')
-            cup_pred = vpred_cpu[:,1,:,:].numpy().astype('int32')
+    eiou, edice = 0,0
+    # TODO: submit fixed bug
+    # sigmoid the output of pred_mask because the threshold is from 0.1 to 0.9
+    pred = F.sigmoid(pred)
+    #fixed
+    for th in threshold:
+        gt_vmask_p = (true_mask_p > th).float()
+        vpred = (pred > th).float()
+        vpred_cpu = vpred.cpu()
+        disc_pred = vpred_cpu[:,0,:,:].numpy().astype('int32')
 
-            disc_mask = gt_vmask_p [:,0,:,:].squeeze(1).cpu().numpy().astype('int32')
-            cup_mask = gt_vmask_p [:, 1, :, :].squeeze(1).cpu().numpy().astype('int32')
-    
-            '''iou for numpy'''
-            iou_d += iou(disc_pred,disc_mask)
-            iou_c += iou(cup_pred,cup_mask)
+        disc_mask = gt_vmask_p [:,0,:,:].squeeze(1).cpu().numpy().astype('int32')
 
-            '''dice for torch'''
-            disc_dice += dice_coeff(vpred[:,0,:,:], gt_vmask_p[:,0,:,:]).item()
-            cup_dice += dice_coeff(vpred[:,1,:,:], gt_vmask_p[:,1,:,:]).item()
-            
-        return iou_d / len(threshold), iou_c / len(threshold), disc_dice / len(threshold), cup_dice / len(threshold)
-    else:
-        eiou, edice = 0,0
-        for th in threshold:
+        '''iou for numpy'''
+        thres_wise_res_iou.append(iou(disc_pred,disc_mask))
 
-            gt_vmask_p = (true_mask_p > th).float()
-            vpred = (pred > th).float()
-            vpred_cpu = vpred.cpu()
-            disc_pred = vpred_cpu[:,0,:,:].numpy().astype('int32')
-
-            disc_mask = gt_vmask_p [:,0,:,:].squeeze(1).cpu().numpy().astype('int32')
-    
-            '''iou for numpy'''
-            eiou += iou(disc_pred,disc_mask)
-
-            '''dice for torch'''
-            edice += dice_coeff(vpred[:,0,:,:], gt_vmask_p[:,0,:,:]).item()
-            
-        return eiou / len(threshold), edice / len(threshold)
+        '''dice for torch'''
+        thres_wise_dice_score.append(dice_coeff(vpred[:,0,:,:], gt_vmask_p[:,0,:,:]).item())
+        
+    return thres_wise_res_iou, thres_wise_dice_score
 
 # @objectives.wrap_objective()
 def dot_compare(layer, batch=1, cossim_pow=0):
