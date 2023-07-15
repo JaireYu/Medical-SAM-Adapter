@@ -87,7 +87,7 @@ transform_train = transforms.Compose([
 
 transform_train_seg = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Resize((args.image_size,args.image_size)),
+    transforms.Resize((args.out_size,args.out_size)),
 ])
 
 transform_test = transforms.Compose([
@@ -97,8 +97,7 @@ transform_test = transforms.Compose([
 
 transform_test_seg = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Resize((args.image_size, args.image_size)),
-    
+    transforms.Resize((args.out_size, args.out_size)),
 ])
 '''data end'''
 if args.dataset == 'isic':
@@ -110,15 +109,24 @@ if args.dataset == 'isic':
     nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
     '''end'''
 
+elif args.dataset == 'building_v1':
+    '''buiding data'''
+    isic_train_dataset = Building_v1(args, args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
+    isic_test_dataset = Building_v1(args, args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+
+    nice_train_loader = DataLoader(isic_train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
+    nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+    '''end'''
+
 elif args.dataset == 'decathlon':
     nice_train_loader, nice_test_loader, transform_train, transform_val, train_list, val_list =get_decath_loader(args)
 
 '''begain valuation'''
 best_acc = 0.0
 best_tol = 1e4
-
+threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
 if args.mod == 'sam_adpt':
     net.eval()
-    tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, start_epoch, net)
+    tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, start_epoch, threshold, net)
     logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {start_epoch}.')
     
