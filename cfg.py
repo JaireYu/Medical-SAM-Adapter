@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument('-gpu_device', type=int, default=0, help='use which gpu')
     parser.add_argument('-sim_gpu', type=int, default=0, help='split sim to this gpu')
     parser.add_argument('-epoch_ini', type=int, default=1, help='start epoch')
-    parser.add_argument('-image_size', type=int, default=256, help='image_size')
+    parser.add_argument('-image_size', type=int, default=1024, help='image_size')
     parser.add_argument('-out_size', type=int, default=256, help='output_size')
     parser.add_argument('-patch_size', type=int, default=2, help='patch_size')
     parser.add_argument('-dim', type=int, default=512, help='dim_size')
@@ -46,6 +46,7 @@ def parse_args():
     type=str,
     default='../data',
     help='The path of segmentation data')
+    parser.add_argument('-epoch', type=int, default=10, help='epoch')
     # '../dataset/RIGA/DiscRegion'
     # '../dataset/ISIC'
     opt = parser.parse_args()
