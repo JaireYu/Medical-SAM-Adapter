@@ -179,11 +179,20 @@ class Building_v1(Dataset):
 
         #name = name.split('/')[-1].split(".jpg")[0]
         
+        """
+        # ATTENTION: fixed bug in it
+        # pt: reverse (y,x) to (x,y)
+        !!!!!!!!!!!!!!!!!!!
+        """
+        sam_pt = np.array([-1, -1])
+        sam_pt[0] = pt[1]
+        sam_pt[1] = pt[0]
+        # bug fixed
         image_meta_dict = {'filename_or_obj':name}
         return {
             'image':img,
             'label': mask,
             'p_label':point_label,
-            'pt':pt,
+            'pt':sam_pt,
             'image_meta_dict':image_meta_dict,
         }
