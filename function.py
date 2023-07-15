@@ -124,6 +124,7 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                 coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=GPUdevice)
                 labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=GPUdevice)
                 coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+                #coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
                 pt = (coords_torch, labels_torch)
 
             '''init'''
@@ -173,14 +174,15 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
 
             pbar.update()
 
-    return loss
+    return epoch_loss / len(train_loader)
 
 def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
      # eval mode
     net.eval()
 
     mask_type = torch.float32
-    n_val = len(val_loader)  # the number of batch
+    n_val = len(val_loader) # number of dataloader
+    n_dataset_size = len(val_loader.dataset)  # the number of dataset
     ave_res, mix_res = (0,0,0,0), (0,0,0,0)
     rater_res = [(0,0,0,0) for _ in range(6)]
     tot = 0
@@ -200,6 +202,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
             masksw = pack['label'].to(dtype = torch.float32, device = GPUdevice)
             # for k,v in pack['image_meta_dict'].items():
             #     print(k)
+            cur_bsz = imgsw.shape[0]
             if 'pt' not in pack:
                 imgsw, ptw, masksw = generate_click_prompt(imgsw, masksw)
             else:
@@ -246,6 +249,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                     coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=GPUdevice)
                     labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=GPUdevice)
                     coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+                    #coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
                     pt = (coords_torch, labels_torch)
 
                 '''init'''
@@ -271,8 +275,9 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                         dense_prompt_embeddings=de, 
                         multimask_output=False,
                     )
-                
-                    tot += lossfunc(pred, masks)
+
+                    # tot += lossfunc(pred, masks) #previous version will overcalculate the weight of last incomplete batch
+                    tot += lossfunc(pred, masks) * cur_bsz
 
                     '''vis images'''
                     if ind % args.vis == 0:
@@ -284,6 +289,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                     
 
                     temp = eval_seg(pred, masks, threshold)
+                    temp = tuple([number * cur_bsz for number in temp])
                     mix_res = tuple([sum(a) for a in zip(mix_res, temp)])
 
             pbar.update()
@@ -291,4 +297,4 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
     if args.evl_chunk:
         n_val = n_val * (imgsw.size(-1) // evl_ch)
 
-    return tot/ n_val , tuple([a/n_val for a in mix_res])
+    return tot/n_dataset_size, tuple([a / n_dataset_size for a in mix_res])
