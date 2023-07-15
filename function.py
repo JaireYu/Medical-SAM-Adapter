@@ -123,8 +123,8 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                 point_coords = pt
                 coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=GPUdevice)
                 labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=GPUdevice)
-                coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
-                #coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
+                # coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+                coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
                 pt = (coords_torch, labels_torch)
 
             '''init'''
@@ -176,18 +176,22 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
 
     return epoch_loss / len(train_loader)
 
-def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
+def validation_sam(args, val_loader, epoch, threshold: Tuple, net: nn.Module, clean_dir=True):
      # eval mode
     net.eval()
 
     mask_type = torch.float32
     n_val = len(val_loader) # number of dataloader
     n_dataset_size = len(val_loader.dataset)  # the number of dataset
-    ave_res, mix_res = (0,0,0,0), (0,0,0,0)
+    iou_res = {}
+    dice_res = {}
+    for th in threshold:
+        iou_res[str(th)] = 0
+        dice_res[str(th)] = 0
     rater_res = [(0,0,0,0) for _ in range(6)]
     tot = 0
     hard = 0
-    threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
+    #threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
     GPUdevice = torch.device('cuda:' + str(args.gpu_device))
     device = GPUdevice
 
@@ -248,8 +252,8 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                     point_coords = pt
                     coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=GPUdevice)
                     labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=GPUdevice)
-                    coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
-                    #coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
+                    #coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+                    coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
                     pt = (coords_torch, labels_torch)
 
                 '''init'''
@@ -288,13 +292,17 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                         vis_image(imgs,pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
                     
 
-                    temp = eval_seg(pred, masks, threshold)
-                    temp = tuple([number * cur_bsz for number in temp])
-                    mix_res = tuple([sum(a) for a in zip(mix_res, temp)])
+                    iou_list, dice_list = eval_seg(pred, masks, threshold)
+                    for iou, dice, th in zip(iou_list, dice_list, threshold):
+                        iou_res[str(th)] += iou * cur_bsz
+                        dice_res[str(th)] += dice * cur_bsz
 
             pbar.update()
 
     if args.evl_chunk:
         n_val = n_val * (imgsw.size(-1) // evl_ch)
+    for th in threshold:
+        iou_res[str(th)] /= n_dataset_size
+        dice_res[str(th)] /= n_dataset_size
 
-    return tot/n_dataset_size, tuple([a / n_dataset_size for a in mix_res])
+    return tot/n_dataset_size, (iou_res, dice_res)
