@@ -168,9 +168,11 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
             if vis:
                 if ind % vis == 0:
                     namecat = 'Train'
+                    name_list = []
                     for na in name:
-                        namecat = namecat + na.split('/')[-1].split('.')[0] + '+'
-                    vis_image(imgs,pred,masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
+                        img_name = na.split('/')[-1].split('.')[0]
+                        name_list.append(img_name)
+                    vis_image(imgs,pred,masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, points=showp)
 
             pbar.update()
 
@@ -286,10 +288,11 @@ def validation_sam(args, val_loader, epoch, threshold: Tuple, net: nn.Module, cl
                     '''vis images'''
                     if ind % args.vis == 0:
                         namecat = 'Test'
+                        name_list = []
                         for na in name:
                             img_name = na.split('/')[-1].split('.')[0]
-                            namecat = namecat + img_name + '+'
-                        vis_image(imgs,pred, masks, os.path.join(args.path_helper['sample_path'], namecat+'epoch+' +str(epoch) + '.jpg'), reverse=False, points=showp)
+                            name_list.append(img_name)
+                        vis_image(imgs,pred, masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, points=showp)
                     
 
                     iou_list, dice_list = eval_seg(pred, masks, threshold)
