@@ -16,7 +16,7 @@ from timm.models.layers import DropPath as TimmDropPath,\
     to_2tuple, trunc_normal_
 from timm.models.registry import register_model
 from typing import Tuple
-
+from .common import Adapter
 
 class Conv2d_BN(torch.nn.Sequential):
     def __init__(self, a, b, ks=1, stride=1, pad=0, dilation=1,
@@ -76,7 +76,8 @@ class PatchEmbed(nn.Module):
 
 class MBConv(nn.Module):
     def __init__(self, in_chans, out_chans, expand_ratio,
-                 activation, drop_path):
+                 activation, drop_path, 
+                 use_adapter, scale):
         super().__init__()
         self.in_chans = in_chans
         self.hidden_chans = int(in_chans * expand_ratio)
@@ -95,6 +96,11 @@ class MBConv(nn.Module):
 
         self.drop_path = DropPath(
             drop_path) if drop_path > 0. else nn.Identity()
+        
+        self.use_adapter = use_adapter
+        if self.use_adapter:
+            self.MLP_Adapter = Adapter(self.in_chans, skip_connect=False)
+            self.scale = scale
 
     def forward(self, x):
         shortcut = x
@@ -110,6 +116,10 @@ class MBConv(nn.Module):
         x = self.drop_path(x)
 
         x += shortcut
+
+        if self.use_adapter:
+            x = x + self.scale * self.MLP_Adapter(shortcut)
+
         x = self.act3(x)
 
         return x
@@ -149,11 +159,13 @@ class PatchMerging(nn.Module):
 
 class ConvLayer(nn.Module):
     def __init__(self, dim, input_resolution, depth,
-                 activation,
-                 drop_path=0., downsample=None, use_checkpoint=False,
-                 out_dim=None,
-                 conv_expand_ratio=4.,
-                 ):
+        activation,
+        drop_path=0., downsample=None, use_checkpoint=False,
+        out_dim=None,
+        conv_expand_ratio=4.,
+        use_adapter=False,
+        scale=0.5
+    ):
 
         super().__init__()
         self.dim = dim
@@ -165,7 +177,7 @@ class ConvLayer(nn.Module):
         self.blocks = nn.ModuleList([
             MBConv(dim, dim, conv_expand_ratio, activation,
                    drop_path[i] if isinstance(drop_path, list) else drop_path,
-                   )
+                   use_adapter, scale)
             for i in range(depth)])
 
         # patch merging layer
@@ -304,6 +316,8 @@ class TinyViTBlock(nn.Module):
                  mlp_ratio=4., drop=0., drop_path=0.,
                  local_conv_size=3,
                  activation=nn.GELU,
+                 scale=0.5,
+                 use_adapter=False,
                  ):
         super().__init__()
         self.dim = dim
@@ -331,6 +345,11 @@ class TinyViTBlock(nn.Module):
         pad = local_conv_size // 2
         self.local_conv = Conv2d_BN(
             dim, dim, ks=local_conv_size, stride=1, pad=pad, groups=dim)
+        self.use_adapter = use_adapter
+        if self.use_adapter:
+            self.MLP_Adapter = Adapter(dim, skip_connect=False)
+            self.Space_Adapter = Adapter(dim)
+            self.scale = scale
 
     def forward(self, x):
         H, W = self.input_resolution
@@ -339,6 +358,8 @@ class TinyViTBlock(nn.Module):
         res_x = x
         if H == self.window_size and W == self.window_size:
             x = self.attn(x)
+            if self.use_adapter:
+                x = self.Space_Adapter(x)
         else:
             x = x.view(B, H, W, C)
             pad_b = (self.window_size - H %
@@ -357,6 +378,8 @@ class TinyViTBlock(nn.Module):
             x = x.view(B, nH, self.window_size, nW, self.window_size, C).transpose(2, 3).reshape(
                 B * nH * nW, self.window_size * self.window_size, C)
             x = self.attn(x)
+            if self.use_adapter:
+                x = self.Space_Adapter(x)
             # window reverse
             x = x.view(B, nH, nW, self.window_size, self.window_size,
                        C).transpose(2, 3).reshape(B, pH, pW, C)
@@ -372,7 +395,10 @@ class TinyViTBlock(nn.Module):
         x = self.local_conv(x)
         x = x.view(B, C, L).transpose(1, 2)
 
-        x = x + self.drop_path(self.mlp(x))
+        if self.use_adapter:
+            x = x + self.drop_path(self.mlp(x))
+        else:
+            x = x + self.drop_path(self.mlp(x)) + self.scale * self.MLP_Adapter(x)
         return x
 
     def extra_repr(self) -> str:
@@ -405,6 +431,8 @@ class BasicLayer(nn.Module):
                  local_conv_size=3,
                  activation=nn.GELU,
                  out_dim=None,
+                 scale=0.5,
+                 use_adapter=False,
                  ):
 
         super().__init__()
@@ -423,6 +451,8 @@ class BasicLayer(nn.Module):
                              drop_path, list) else drop_path,
                          local_conv_size=local_conv_size,
                          activation=activation,
+                         scale=scale,
+                         use_adapter=use_adapter
                          )
             for i in range(depth)])
 
@@ -459,8 +489,10 @@ class LayerNorm2d(nn.Module):
         x = (x - u) / torch.sqrt(s + self.eps)
         x = self.weight[:, None, None] * x + self.bias[:, None, None]
         return x
+
 class TinyViT(nn.Module):
     def __init__(self, 
+                 args,
                  img_size=224, 
                  in_chans=3, 
                  num_classes=1000,
@@ -499,20 +531,27 @@ class TinyViT(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            kwargs = dict(dim=embed_dims[i_layer],
-                        input_resolution=(patches_resolution[0] // (2 ** (i_layer-1 if i_layer == 3 else i_layer)),
+            if i_layer == 0:
+                use_adapter = True if args.adapt_cnn and args.adapt_enc else False
+            else:
+                use_adapter = args.adapt_enc
+            kwargs = dict(
+                dim=embed_dims[i_layer],
+                input_resolution=(patches_resolution[0] // (2 ** (i_layer-1 if i_layer == 3 else i_layer)),
                                 patches_resolution[1] // (2 ** (i_layer-1 if i_layer == 3 else i_layer))),
-                        #   input_resolution=(patches_resolution[0] // (2 ** i_layer),
-                        #                     patches_resolution[1] // (2 ** i_layer)),
-                          depth=depths[i_layer],
-                          drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
-                          downsample=PatchMerging if (
-                              i_layer < self.num_layers - 1) else None,
-                          use_checkpoint=use_checkpoint,
-                          out_dim=embed_dims[min(
-                              i_layer + 1, len(embed_dims) - 1)],
-                          activation=activation,
-                          )
+                #   input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                #                     patches_resolution[1] // (2 ** i_layer)),
+                depth=depths[i_layer],
+                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                downsample=PatchMerging if (
+                    i_layer < self.num_layers - 1) else None,
+                use_checkpoint=use_checkpoint,
+                out_dim=embed_dims[min(
+                    i_layer + 1, len(embed_dims) - 1)],
+                activation=activation,
+                use_adapter=use_adapter,
+                scale = args.adapt_scale
+            )
             if i_layer == 0:
                 layer = ConvLayer(
                     conv_expand_ratio=mbconv_expand_ratio,
