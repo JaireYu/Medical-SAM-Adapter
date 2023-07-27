@@ -119,6 +119,11 @@ def get_network(args, net, use_gpu=True, gpu_device = 0, distribution = True):
         from models.sam.utils.transforms import ResizeLongestSide
 
         net = sam_model_registry['vit_b'](args,checkpoint=args.sam_ckpt).to(device)
+    elif net == 'mobile_sam':
+        from models.sam import SamPredictor, sam_model_registry
+        from models.sam.utils.transforms import ResizeLongestSide
+
+        net = sam_model_registry['vit_t'](args,checkpoint=args.sam_ckpt).to(device)
     else:
         print('the network name you have entered is not supported yet')
         sys.exit()
