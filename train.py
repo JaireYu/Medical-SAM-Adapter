@@ -141,10 +141,11 @@ checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 best_acc = 0.0
 best_tol = 1e4
 threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
+tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, 0, threshold, net, writer)
+logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch 0.')
+
 for epoch in range(args.epoch):
     if args.mod == 'sam_adpt':
-        tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, threshold, net, writer)
-        logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
         net.train()
         time_start = time.time()
         loss = function.train_sam(args, net, optimizer, nice_train_loader, epoch, writer, vis = args.vis)
