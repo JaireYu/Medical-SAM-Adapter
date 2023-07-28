@@ -396,9 +396,9 @@ class TinyViTBlock(nn.Module):
         x = x.view(B, C, L).transpose(1, 2)
 
         if self.use_adapter:
-            x = x + self.drop_path(self.mlp(x))
-        else:
             x = x + self.drop_path(self.mlp(x)) + self.scale * self.MLP_Adapter(x)
+        else:
+            x = x + self.drop_path(self.mlp(x))
         return x
 
     def extra_repr(self) -> str:
