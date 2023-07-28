@@ -34,11 +34,11 @@ from utils import *
 import function 
 
 def setup_seed(seed):
-     torch.manual_seed(seed)
-     torch.cuda.manual_seed_all(seed)
-     np.random.seed(seed)
-     random.seed(seed)
-     torch.backends.cudnn.deterministic = True
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
 
 setup_seed(0)
 
@@ -146,14 +146,12 @@ logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch 0.')
 
 for epoch in range(args.epoch):
     if args.mod == 'sam_adpt':
-        net.train()
         time_start = time.time()
         loss = function.train_sam(args, net, optimizer, nice_train_loader, epoch, writer, vis = args.vis)
         logger.info(f'Train loss: {loss}|| @ epoch {epoch}.')
         time_end = time.time()
         print('time_for_training ', time_end - time_start)
 
-        net.eval()
         if epoch % args.val_freq == 0 or epoch == args.epoch:
             tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, threshold, net, writer)
             logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
