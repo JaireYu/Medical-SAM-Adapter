@@ -51,6 +51,8 @@ def parse_args():
     parser.add_argument('-adapt_enc', action='store_true', help='use adapter for encoder')
     parser.add_argument('-adapt_cnn', action='store_true', help='adapt cnn')
     parser.add_argument('-adapt_dec', action='store_true', help='use adapter for decoder')
+    parser.add_argument('-set_bn_eval', action='store_true', help='set bn eval')
+    parser.add_argument('-set_drop_eval', action='store_true', help='set Dropout and DropPath eval')
     # '../dataset/RIGA/DiscRegion'
     # '../dataset/ISIC'
     opt = parser.parse_args()

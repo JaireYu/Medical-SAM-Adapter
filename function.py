@@ -69,6 +69,17 @@ global_step_best = 0
 epoch_loss_values = []
 metric_values = []
 
+def set_bn_eval(m):
+    classname = m.__class__.__name__
+    if classname.find('BatchNorm2d') != -1:
+        m.eval()
+
+def set_drop_eval(m):
+    classname = m.__class__.__name__
+    print(classname)
+    if classname.find('Drop') != -1:
+        m.eval()
+
 def train_sam(args, net: nn.Module, optimizer, train_loader,
           epoch, writer, schedulers=None, vis = 50):
     hard = 0
@@ -76,6 +87,10 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
     ind = 0
     # train mode
     net.train()
+    if args.set_bn_eval:
+        net.apply(set_bn_eval)
+    if args.set_drop_eval:
+        net.apply(set_drop_eval)
     optimizer.zero_grad()
 
     epoch_loss = 0
