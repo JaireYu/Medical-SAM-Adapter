@@ -92,7 +92,7 @@ from monai.data import (
     set_track_meta,
 )
 
-
+import cv2
 
 
 args = cfg.parse_args()
@@ -978,8 +978,7 @@ def vis_image(imgs, pred_masks, gt_masks, save_path, reverse = False, points = N
     dev = pred_masks.get_device()
     row_num = min(b, 4)
 
-    if torch.max(pred_masks) > 1 or torch.min(pred_masks) < 0:
-        pred_masks = torch.sigmoid(pred_masks)
+    pred_masks = torch.sigmoid(pred_masks)
 
     if reverse == True:
         pred_masks = 1 - pred_masks
@@ -1007,6 +1006,49 @@ def vis_image(imgs, pred_masks, gt_masks, save_path, reverse = False, points = N
                 gt_masks[i,0,p[i,0]-5:p[i,0]+5,p[i,1]-5:p[i,1]+5] = 0.5
                 gt_masks[i,1,p[i,0]-5:p[i,0]+5,p[i,1]-5:p[i,1]+5] = 0.1
                 gt_masks[i,2,p[i,0]-5:p[i,0]+5,p[i,1]-5:p[i,1]+5] = 0.4
+        tup = (imgs[:row_num,:,:,:],pred_masks[:row_num,:,:,:], gt_masks[:row_num,:,:,:])
+        # compose = torch.cat((imgs[:row_num,:,:,:],pred_disc[:row_num,:,:,:], pred_cup[:row_num,:,:,:], gt_disc[:row_num,:,:,:], gt_cup[:row_num,:,:,:]),0)
+        compose = torch.cat(tup,0)
+        vutils.save_image(compose, fp = save_path, nrow = row_num, padding = 10)
+
+    return
+
+def vis_image_box(imgs, pred_masks, gt_masks, save_path, reverse = False, boxes = None):
+    
+    b,c,h,w = pred_masks.size()
+    dev = pred_masks.get_device()
+    row_num = min(b, 4)
+
+    pred_masks = torch.sigmoid(pred_masks)
+
+    if reverse == True:
+        pred_masks = 1 - pred_masks
+        gt_masks = 1 - gt_masks
+    if c == 2:
+        pred_disc, pred_cup = pred_masks[:,0,:,:].unsqueeze(1).expand(b,3,h,w), pred_masks[:,1,:,:].unsqueeze(1).expand(b,3,h,w)
+        gt_disc, gt_cup = gt_masks[:,0,:,:].unsqueeze(1).expand(b,3,h,w), gt_masks[:,1,:,:].unsqueeze(1).expand(b,3,h,w)
+        tup = (imgs[:row_num,:,:,:],pred_disc[:row_num,:,:,:], pred_cup[:row_num,:,:,:], gt_disc[:row_num,:,:,:], gt_cup[:row_num,:,:,:])
+        # compose = torch.cat((imgs[:row_num,:,:,:],pred_disc[:row_num,:,:,:], pred_cup[:row_num,:,:,:], gt_disc[:row_num,:,:,:], gt_cup[:row_num,:,:,:]),0)
+        compose = torch.cat((pred_disc[:row_num,:,:,:], pred_cup[:row_num,:,:,:], gt_disc[:row_num,:,:,:], gt_cup[:row_num,:,:,:]),0)
+        vutils.save_image(compose, fp = save_path, nrow = row_num, padding = 10)
+    else:
+        imgs = torchvision.transforms.Resize((h,w))(imgs)
+        if imgs.size(1) == 1:
+            imgs = imgs[:,0,:,:].unsqueeze(1).expand(b,3,h,w)
+        pred_masks = pred_masks[:,0,:,:].unsqueeze(1).expand(b,3,h,w)
+        gt_masks = gt_masks[:,0,:,:].unsqueeze(1).expand(b,3,h,w)
+        if boxes != None:
+            boxed_gt_masks = []
+            if args.thd:
+                boxes = np.round(boxes.cpu()/args.roi_size * args.out_size).to(dtype = torch.int)
+            else:
+                boxes = np.round(boxes.cpu()/args.image_size * args.out_size).to(dtype = torch.int)
+            for i in range(b):
+                # gt_masks[i,:,points[i,0]-5:points[i,0]+5,points[i,1]-5:points[i,1]+5] = torch.Tensor([255, 0, 0]).to(dtype = torch.float32, device = torch.device('cuda:' + str(dev)))
+                gt_m = np.uint8((gt_masks[i].permute((1,2,0)) * 255).cpu().numpy())
+                cv2.rectangle(gt_m, (int(boxes[i,0]), int(boxes[i,1])), (int(boxes[i,2]), int(boxes[i,3])), (0, 0, 255), 2)
+                boxed_gt_masks.append(torch.from_numpy(gt_m).permute((2,0,1)).to(dtype = torch.float32, device = gt_masks[i].device)/255)
+            gt_masks = torch.stack(boxed_gt_masks,0)
         tup = (imgs[:row_num,:,:,:],pred_masks[:row_num,:,:,:], gt_masks[:row_num,:,:,:])
         # compose = torch.cat((imgs[:row_num,:,:,:],pred_disc[:row_num,:,:,:], pred_cup[:row_num,:,:,:], gt_disc[:row_num,:,:,:], gt_cup[:row_num,:,:,:]),0)
         compose = torch.cat(tup,0)
