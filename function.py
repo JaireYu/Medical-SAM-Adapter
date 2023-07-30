@@ -107,32 +107,25 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
             masks = pack['label'].to(dtype = torch.float32, device = GPUdevice)
             # for k,v in pack['image_meta_dict'].items():
             #     print(k)
-            if 'pt' not in pack:
-                imgs, pt, masks = generate_click_prompt(imgs, masks)
-            else:
-                pt = pack['pt']
-                point_labels = pack['p_label']
             name = pack['image_meta_dict']['filename_or_obj']
-
-            if args.thd:
-                pt = rearrange(pt, 'b n d -> (b d) n')
-                imgs = rearrange(imgs, 'b c h w d -> (b d) c h w ')
-                masks = rearrange(masks, 'b c h w d -> (b d) c h w ')
-
-                imgs = imgs.repeat(1,3,1,1)
-                point_labels = torch.ones(imgs.size(0))
-
-                imgs = torchvision.transforms.Resize((args.image_size,args.image_size))(imgs)
-                masks = torchvision.transforms.Resize((args.out_size,args.out_size))(masks)
-            
-            showp = pt
+            if args.prompt == 'click':
+                if 'pt' not in pack:
+                    imgs, pt, masks = generate_click_prompt(imgs, masks)
+                else:
+                    pt = pack['pt']
+                    point_labels = pack['p_label']
+                showp = pt
+            elif args.prompt == 'box':
+                assert 'box' in pack
+                box = pack['box']
+                showbox = box
 
             mask_type = torch.float32
             ind += 1
             b_size,c,w,h = imgs.size()
             longsize = w if w >=h else h
 
-            if point_labels[0] != -1:
+            if args.prompt == 'point' and point_labels[0] != -1:
                 # point_coords = samtrans.ResizeLongestSide(longsize).apply_coords(pt, (h, w))
                 point_coords = pt
                 coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=GPUdevice)
@@ -140,7 +133,9 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                 # coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
                 coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
                 pt = (coords_torch, labels_torch)
-
+            elif args.prompt == 'box':
+                box = torch.as_tensor(box, dtype=torch.float, device=GPUdevice)
+                box = box.unsqueeze(1)
             '''init'''
             if hard:
                 true_mask_ave = (true_mask_ave > 0.5).float()
@@ -151,16 +146,27 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
             for n, value in net.image_encoder.named_parameters():
                 if "Adapter" not in n:
                     value.requires_grad = False
+
+            origin_imgs = imgs
             imgs = net.preprocess(imgs)
             imge= net.image_encoder(imgs)
 
             with torch.no_grad():
                 # imge= net.image_encoder(imgs)
-                se, de = net.prompt_encoder(
-                    points=pt,
-                    boxes=None,
-                    masks=None,
-                )
+                if args.prompt == 'click':
+                    se, de = net.prompt_encoder(
+                        points=pt,
+                        boxes=None,
+                        masks=None,
+                    )
+                elif args.prompt == 'box':
+                    se, de = net.prompt_encoder(
+                        points=None,
+                        boxes=box,
+                        masks=None,
+                    )
+                else:
+                    raise NotImplementedError
             pred, _ = net.mask_decoder(
                 image_embeddings=imge,
                 image_pe=net.prompt_encoder.get_dense_pe(), 
@@ -187,8 +193,12 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
                     for na in name:
                         img_name = na.split('/')[-1].split('.')[0]
                         name_list.append(img_name)
-                    vis_image(imgs,pred,masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, points=showp)
-
+                    if args.prompt == 'click':
+                        vis_image(origin_imgs/255,pred,masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, points=showp)
+                    elif args.prompt == 'box':
+                        vis_image_box(origin_imgs/255,pred,masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, boxes=showbox)
+                    else:
+                        raise NotImplementedError
             pbar.update()
 
     return epoch_loss / len(train_loader)
@@ -224,12 +234,18 @@ def validation_sam(args, val_loader, epoch, threshold: Tuple, net: nn.Module, cl
             # for k,v in pack['image_meta_dict'].items():
             #     print(k)
             cur_bsz = imgsw.shape[0]
-            if 'pt' not in pack:
-                imgsw, ptw, masksw = generate_click_prompt(imgsw, masksw)
-            else:
-                ptw = pack['pt']
-                point_labels = pack['p_label']
             name = pack['image_meta_dict']['filename_or_obj']
+            if args.prompt == 'click':
+                if 'pt' not in pack:
+                    imgs, pt, masks = generate_click_prompt(imgs, masks)
+                else:
+                    pt = pack['pt']
+                    point_labels = pack['p_label']
+                showp = pt
+            elif args.prompt == 'box':
+                assert 'box' in pack
+                box = pack['box']
+                showbox = box
             
             buoy = 0
             if args.evl_chunk:
@@ -238,40 +254,27 @@ def validation_sam(args, val_loader, epoch, threshold: Tuple, net: nn.Module, cl
                 evl_ch = int(imgsw.size(-1))
 
             while (buoy + evl_ch) <= imgsw.size(-1):
-                if args.thd:
-                    pt = ptw[:,:,buoy: buoy + evl_ch]
-                else:
-                    pt = ptw
 
                 imgs = imgsw[...,buoy:buoy + evl_ch]
                 masks = masksw[...,buoy:buoy + evl_ch]
                 buoy += evl_ch
-
-                if args.thd:
-                    pt = rearrange(pt, 'b n d -> (b d) n')
-                    imgs = rearrange(imgs, 'b c h w d -> (b d) c h w ')
-                    masks = rearrange(masks, 'b c h w d -> (b d) c h w ')
-                    imgs = imgs.repeat(1,3,1,1)
-                    point_labels = torch.ones(imgs.size(0))
-
-                    imgs = torchvision.transforms.Resize((args.image_size,args.image_size))(imgs)
-                    masks = torchvision.transforms.Resize((args.out_size,args.out_size))(masks)
-                
-                showp = pt
 
                 mask_type = torch.float32
                 ind += 1
                 b_size,c,w,h = imgs.size()
                 longsize = w if w >=h else h
 
-                if point_labels[0] != -1:
+                if args.prompt == 'click' and point_labels[0] != -1:
                     # point_coords = samtrans.ResizeLongestSide(longsize).apply_coords(pt, (h, w))
                     point_coords = pt
                     coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=GPUdevice)
                     labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=GPUdevice)
-                    #coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+                    # coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
                     coords_torch, labels_torch = coords_torch.unsqueeze(1), labels_torch.unsqueeze(1)
                     pt = (coords_torch, labels_torch)
+                elif args.prompt == 'box':
+                    box = torch.as_tensor(box, dtype=torch.float, device=GPUdevice)
+                    box = box.unsqueeze(1)
 
                 '''init'''
                 if hard:
@@ -280,15 +283,25 @@ def validation_sam(args, val_loader, epoch, threshold: Tuple, net: nn.Module, cl
                 imgs = imgs.to(dtype = mask_type,device = GPUdevice)
                 
                 '''test'''
+                origin_imgs = imgs
                 with torch.no_grad():
                     imgs = net.preprocess(imgs)
                     imge= net.image_encoder(imgs)
 
-                    se, de = net.prompt_encoder(
-                        points=pt,
-                        boxes=None,
-                        masks=None,
-                    )
+                    if args.prompt == 'click':
+                        se, de = net.prompt_encoder(
+                            points=pt,
+                            boxes=None,
+                            masks=None,
+                        )
+                    elif args.prompt == 'box':
+                        se, de = net.prompt_encoder(
+                            points=None,
+                            boxes=box,
+                            masks=None,
+                        )
+                    else:
+                        raise NotImplementedError
 
                     pred, _ = net.mask_decoder(
                         image_embeddings=imge,
@@ -308,7 +321,12 @@ def validation_sam(args, val_loader, epoch, threshold: Tuple, net: nn.Module, cl
                         for na in name:
                             img_name = na.split('/')[-1].split('.')[0]
                             name_list.append(img_name)
-                        vis_image(imgs,pred, masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, points=showp)
+                        if args.prompt == 'click':
+                            vis_image(origin_imgs/255,pred,masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, points=showp)
+                        elif args.prompt == 'box':
+                            vis_image_box(origin_imgs/255,pred,masks, os.path.join(args.path_helper['sample_path'], namecat + 'epoch+' +str(epoch) + '+' + str(ind) + '.jpg'), reverse=False, boxes=showbox)
+                        else:
+                            raise NotImplementedError
                     
 
                     iou_list, dice_list = eval_seg(pred, masks, threshold)
