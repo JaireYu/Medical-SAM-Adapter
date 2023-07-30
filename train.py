@@ -119,8 +119,17 @@ elif args.dataset == 'building_v1':
 
 elif args.dataset == 'building_refined_v1':
     '''buiding data'''
-    isic_train_dataset = Building_refined_v1(args, args.data_path, mode = 'Training')
-    isic_test_dataset = Building_refined_v1(args, args.data_path, mode = 'Test')
+    isic_train_dataset = Building_refined_v1(args, args.data_path, mode = 'Training', prompt = args.prompt)
+    isic_test_dataset = Building_refined_v1(args, args.data_path, mode = 'Test', prompt=args.prompt)
+
+    nice_train_loader = DataLoader(isic_train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
+    nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+    '''end'''
+
+elif args.dataset == 'Henan_building_refined_v1':
+    '''buiding data'''
+    isic_train_dataset = Henan_building_refined_v1(args, args.data_path, mode = 'Training', prompt = args.prompt)
+    isic_test_dataset = Henan_building_refined_v1(args, args.data_path, mode = 'Test', prompt=args.prompt)
 
     nice_train_loader = DataLoader(isic_train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
     nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)

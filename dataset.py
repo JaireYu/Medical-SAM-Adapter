@@ -21,7 +21,7 @@ import random
 import json
 from monai.transforms import LoadImaged, Randomizable,LoadImage
 from pycocotools import mask as Mask
-
+from torchvision.ops import masks_to_boxes
 
 class ISIC2016(Dataset):
     def __init__(self, args, data_path , transform = None, transform_msk = None, mode = 'Training',prompt = 'click', plane = False):
@@ -279,9 +279,16 @@ class Building_refined_v1(Dataset):
             torch.set_rng_state(state)
             # transform mask
             mask = self.transform_test_mask(mask)
-            pt = np.array(meta_json_info['pt'])
-            pt[0] = pt[0] * self.img_size / origin_x
-            pt[1] = pt[1] * self.img_size / origin_y
+            if self.prompt == 'click':
+                pt = np.array(meta_json_info['pt'])
+                pt[0] = pt[0] * self.img_size / origin_x
+                pt[1] = pt[1] * self.img_size / origin_y
+            elif self.prompt == 'box':
+                box = np.array(meta_json_info['box'])
+                box[0] = box[0] * self.img_size / origin_x
+                box[1] = box[1] * self.img_size / origin_y
+                box[2] = box[2] * self.img_size / origin_x
+                box[3] = box[3] * self.img_size / origin_y
         elif self.prompt == 'click':
             # flip image
             state = torch.get_rng_state()
@@ -311,26 +318,253 @@ class Building_refined_v1(Dataset):
             except:
                 pass
             mask = self.transform_resize_mask(mask)
+        elif self.prompt == 'box':
+            # flip image
+            state = torch.get_rng_state()
+            img = self.transform_flip(img)
+            torch.set_rng_state(state)
+            # flip mask
+            mask = self.transform_flip_mask(mask)
+            # rotate img
+            state = torch.get_rng_state()
+            rotated_img = self.transform_rotate(img)
+            torch.set_rng_state(state)
+            # rotate mask
+            rotated_mask = self.transform_rotate(mask)
+            if rotated_mask.sum() != 0:
+                # rotated operation may cause the mask to be all zero
+                mask = rotated_mask
+                # transform image
+                img = rotated_img
+
+            binary_mask = np.array(mask[0])
+            binary_mask[binary_mask != 0] = 1
+            mask = torch.from_numpy(binary_mask).unsqueeze(0)
+            a = masks_to_boxes(mask)
+            box = a[0].cpu().numpy().tolist()
+            x_len = box[2] - box[0]
+            y_len = box[3] - box[1]
+            x_offset = np.clip(np.random.normal(loc=0, scale=0.05*x_len, size=2), -10, 10)
+            y_offset = np.clip(np.random.normal(loc=0, scale=0.05*y_len, size=2), -10, 10)
+            box[0] = min(max(int(box[0] + x_offset[0]), 0), 1023)
+            box[1] = min(max(int(box[1] + y_offset[0]), 0), 1023)
+            box[2] = min(max(int(box[2] + x_offset[1]), 0), 1023)
+            box[3] = min(max(int(box[3] + y_offset[1]), 0), 1023)
+            mask = self.transform_resize_mask(mask)
         else:
             raise NotImplementedError
 
         #name = name.split('/')[-1].split(".jpg")[0]
-        
+        image_meta_dict = {'filename_or_obj':name}
+        img = img * 255
+        info_dict = {
+            'image':img,
+            'label': mask,
+            'p_label':point_label,
+            'image_meta_dict':image_meta_dict,
+        }
         """
         # ATTENTION: fixed bug in it
         # pt: reverse (y,x) to (x,y)
         !!!!!!!!!!!!!!!!!!!
         """
-        sam_pt = np.array([-1, -1])
-        sam_pt[0] = pt[1]
-        sam_pt[1] = pt[0]
-        # bug fixed
+        if self.prompt == 'click':
+            sam_pt = np.array([-1, -1])
+            sam_pt[0] = pt[1]
+            sam_pt[1] = pt[0]
+            info_dict['pt'] = sam_pt
+        elif self.prompt == 'box':
+            info_dict['box'] = np.array(box)
+        else:
+            raise NotImplementedError
+        
+        return info_dict
+    
+class Henan_building_refined_v1(Dataset):
+    def __init__(self, args, data_path, mode = 'Training',prompt = 'click', plane = False):
+        self.prompt = prompt
+        if mode == 'Training':
+            if self.prompt == 'box':
+                self.json_data = json.load(open(os.path.join(data_path, 'training_box.json')))
+            elif self.prompt == 'click':
+                self.json_data = json.load(open(os.path.join(data_path, 'training_point.json')))
+        elif mode == 'Test':
+            if self.prompt == 'box':
+                self.json_data = json.load(open(os.path.join(data_path, 'testing_box.json')))
+            elif self.prompt == 'click':
+                self.json_data = json.load(open(os.path.join(data_path, 'testing_point.json')))
+        self.mode = mode
+        self.data_path = data_path
+        self.img_size = args.image_size
+
+        if mode == 'Training':
+            self.transform_flip = transforms.Compose([
+                transforms.Resize((args.image_size,args.image_size)),
+                transforms.RandomHorizontalFlip(args.horizontal_flip_prob),
+                transforms.RandomVerticalFlip(args.vertical_flip_prob),
+                transforms.ToTensor()
+            ])
+            self.transform_flip_mask = transforms.Compose([
+                transforms.Resize((args.image_size,args.image_size)),
+                transforms.RandomHorizontalFlip(args.horizontal_flip_prob),
+                transforms.RandomVerticalFlip(args.vertical_flip_prob),
+                transforms.ToTensor()
+            ])
+            self.transform_rotate = transforms.RandomApply([
+                transforms.RandomRotation(degrees=args.rotate_degree)], p=args.rotate_prob
+            )
+            self.transform_resize_mask = transforms.Compose([
+                transforms.Resize((args.out_size,args.out_size))
+            ])
+        else:
+            self.transform_test = transforms.Compose([
+                transforms.Resize((args.image_size, args.image_size)),
+                transforms.ToTensor(),
+            ])
+            self.transform_test_mask = transforms.Compose([
+                transforms.Resize((args.out_size, args.out_size)),
+                transforms.ToTensor(),
+            ])
+
+    def __len__(self):
+        return len(self.json_data)
+
+    def __getitem__(self, index):
+        # if self.mode == 'Training':
+        #     point_label = random.randint(0, 1)
+        #     inout = random.randint(0, 1)
+        # else:
+        #     inout = 1
+        #     point_label = 1
+        inout = 1
+        point_label = 1
+
+        """Get the images"""
+        meta_json_info = self.json_data[index]
+        name = meta_json_info["img"]
+        img_path = os.path.join(self.data_path, 'img/' + name)
+        
+        mask_name = meta_json_info["mask"]
+        msk_path = os.path.join(self.data_path, 'mask/' + mask_name)
+
+        img = Image.open(img_path).convert('RGB')
+        origin_x, origin_y = img.size
+
+        rle_code = meta_json_info['rle_code']
+        rle_code['counts'] = str.encode(rle_code['counts'])
+        mask = Mask.decode(rle_code)
+
+        mask = Image.fromarray(mask * 255).convert('L')
+
+        # if self.mode == 'Training':
+        #     label = 0 if self.label_list[index] == 'benign' else 1
+        # else:
+        #     label = int(self.label_list[index])
+
+        if self.mode == "Test":
+            # transform image
+            state = torch.get_rng_state()
+            img = self.transform_test(img)
+            torch.set_rng_state(state)
+            # transform mask
+            mask = self.transform_test_mask(mask)
+            if self.prompt == 'click':
+                pt = np.array(meta_json_info['pt'])
+                pt[0] = pt[0] * self.img_size / origin_x
+                pt[1] = pt[1] * self.img_size / origin_y
+            elif self.prompt == 'box':
+                box = np.array(meta_json_info['box'])
+                box[0] = box[0] * self.img_size / origin_x
+                box[1] = box[1] * self.img_size / origin_y
+                box[2] = box[2] * self.img_size / origin_x
+                box[3] = box[3] * self.img_size / origin_y
+        elif self.prompt == 'click':
+            # flip image
+            state = torch.get_rng_state()
+            img = self.transform_flip(img)
+            torch.set_rng_state(state)
+            # flip mask
+            mask = self.transform_flip_mask(mask)
+            # rotate img
+            state = torch.get_rng_state()
+            rotated_img = self.transform_rotate(img)
+            torch.set_rng_state(state)
+            # rotate mask
+            rotated_mask = self.transform_rotate(mask)
+            if rotated_mask.sum() != 0:
+                # rotated operation may cause the mask to be all zero
+                mask = rotated_mask
+                # transform image
+                img = rotated_img
+
+            try:
+                pt = random_click(np.array(mask[0]), point_label, inout)
+                # when the mask is too small, there is no 255, because smooth when convert('L') and resize
+            except ValueError:
+                binary_mask = np.array(mask[0])
+                binary_mask[binary_mask != 0] = 1
+                pt = random_click(np.array(binary_mask), point_label, inout)
+            except:
+                pass
+            mask = self.transform_resize_mask(mask)
+        elif self.prompt == 'box':
+            # flip image
+            state = torch.get_rng_state()
+            img = self.transform_flip(img)
+            torch.set_rng_state(state)
+            # flip mask
+            mask = self.transform_flip_mask(mask)
+            # rotate img
+            state = torch.get_rng_state()
+            rotated_img = self.transform_rotate(img)
+            torch.set_rng_state(state)
+            # rotate mask
+            rotated_mask = self.transform_rotate(mask)
+            if rotated_mask.sum() != 0:
+                # rotated operation may cause the mask to be all zero
+                mask = rotated_mask
+                # transform image
+                img = rotated_img
+
+            binary_mask = np.array(mask[0])
+            binary_mask[binary_mask != 0] = 1
+            mask = torch.from_numpy(binary_mask).unsqueeze(0)
+            a = masks_to_boxes(mask)
+            box = a[0].cpu().numpy().tolist()
+            x_len = box[2] - box[0]
+            y_len = box[3] - box[1]
+            x_offset = np.clip(np.random.normal(loc=0, scale=0.05*x_len, size=2), -10, 10)
+            y_offset = np.clip(np.random.normal(loc=0, scale=0.05*y_len, size=2), -10, 10)
+            box[0] = min(max(int(box[0] + x_offset[0]), 0), 1023)
+            box[1] = min(max(int(box[1] + y_offset[0]), 0), 1023)
+            box[2] = min(max(int(box[2] + x_offset[1]), 0), 1023)
+            box[3] = min(max(int(box[3] + y_offset[1]), 0), 1023)
+            mask = self.transform_resize_mask(mask)
+        else:
+            raise NotImplementedError
+
+        #name = name.split('/')[-1].split(".jpg")[0]
         image_meta_dict = {'filename_or_obj':name}
         img = img * 255
-        return {
+        info_dict = {
             'image':img,
             'label': mask,
             'p_label':point_label,
-            'pt':sam_pt,
             'image_meta_dict':image_meta_dict,
         }
+        """
+        # ATTENTION: fixed bug in it
+        # pt: reverse (y,x) to (x,y)
+        !!!!!!!!!!!!!!!!!!!
+        """
+        if self.prompt == 'click':
+            sam_pt = np.array([-1, -1])
+            sam_pt[0] = pt[1]
+            sam_pt[1] = pt[0]
+            info_dict['pt'] = sam_pt
+        elif self.prompt == 'box':
+            info_dict['box'] = np.array(box)
+        else:
+            raise NotImplementedError
+        
+        return info_dict
