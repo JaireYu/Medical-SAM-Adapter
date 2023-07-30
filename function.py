@@ -76,7 +76,6 @@ def set_bn_eval(m):
 
 def set_drop_eval(m):
     classname = m.__class__.__name__
-    print(classname)
     if classname.find('Drop') != -1:
         m.eval()
 
@@ -152,6 +151,7 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
             for n, value in net.image_encoder.named_parameters():
                 if "Adapter" not in n:
                     value.requires_grad = False
+            imgs = net.preprocess(imgs)
             imge= net.image_encoder(imgs)
 
             with torch.no_grad():
@@ -281,6 +281,7 @@ def validation_sam(args, val_loader, epoch, threshold: Tuple, net: nn.Module, cl
                 
                 '''test'''
                 with torch.no_grad():
+                    imgs = net.preprocess(imgs)
                     imge= net.image_encoder(imgs)
 
                     se, de = net.prompt_encoder(
