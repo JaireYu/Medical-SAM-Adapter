@@ -117,6 +117,15 @@ elif args.dataset == 'building_v1':
     nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
     '''end'''
 
+elif args.dataset == 'building_refined_v1':
+    '''buiding data'''
+    isic_train_dataset = Building_refined_v1(args, args.data_path, mode = 'Training')
+    isic_test_dataset = Building_refined_v1(args, args.data_path, mode = 'Test')
+
+    nice_train_loader = DataLoader(isic_train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
+    nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+    '''end'''
+
 elif args.dataset == 'decathlon':
     nice_train_loader, nice_test_loader, transform_train, transform_val, train_list, val_list =get_decath_loader(args)
 
