@@ -53,6 +53,10 @@ def parse_args():
     parser.add_argument('-adapt_dec', action='store_true', help='use adapter for decoder')
     parser.add_argument('-set_bn_eval', action='store_true', help='set bn eval')
     parser.add_argument('-set_drop_eval', action='store_true', help='set Dropout and DropPath eval')
+    parser.add_argument('-rotate_degree', type=float, default=30, help='reotate degree')
+    parser.add_argument('-rotate_prob', type=float, default=0.5, help='rotate prob')
+    parser.add_argument('-horizontal_flip_prob', type=float, default=0.5, help='horizontal flip prob')
+    parser.add_argument('-vertical_flip_prob', type=float, default=0.0, help='vertical flip prob')
     # '../dataset/RIGA/DiscRegion'
     # '../dataset/ISIC'
     opt = parser.parse_args()
