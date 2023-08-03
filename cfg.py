@@ -58,6 +58,7 @@ def parse_args():
     parser.add_argument('-horizontal_flip_prob', type=float, default=0.5, help='horizontal flip prob')
     parser.add_argument('-vertical_flip_prob', type=float, default=0.0, help='vertical flip prob')
     parser.add_argument('-prompt', type=str, default='click', help='prompt')
+    parser.add_argument('-inference_threshold', type=float, default=0.5, help='inference_threshold')
     # '../dataset/RIGA/DiscRegion'
     # '../dataset/ISIC'
     opt = parser.parse_args()
