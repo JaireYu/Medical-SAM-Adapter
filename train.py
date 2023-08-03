@@ -158,6 +158,7 @@ checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 '''begain training'''
 best_acc = 0.0
 best_tol = 1e4
+best_iou = 0.0
 threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
 tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, 0, threshold, net, writer)
 logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch 0.')
@@ -179,8 +180,9 @@ for epoch in range(args.epoch):
             else:
                 sd = net.state_dict()
 
-            if tol < best_tol:
-                best_tol = tol
+            max_iou = max(eiou.values())
+            if max_iou > best_iou:
+                best_iou = max_iou
                 is_best = True
 
                 save_checkpoint({
