@@ -60,6 +60,7 @@ def parse_args():
     parser.add_argument('-prompt', type=str, default='click', help='prompt')
     parser.add_argument('-inference_threshold', type=float, default=0.5, help='inference_threshold')
     parser.add_argument('-training_percent', type=str, default='100', help='training_percent')
+    parser.add_argument('-single_object_eval', action='store_true', help='not using multi-object train/eval')
     # '../dataset/RIGA/DiscRegion'
     # '../dataset/ISIC'
     opt = parser.parse_args()

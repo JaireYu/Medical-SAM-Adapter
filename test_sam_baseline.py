@@ -105,5 +105,9 @@ elif args.dataset == 'decathlon':
 best_acc = 0.0
 best_tol = 1e4
 threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
-tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, 0, threshold, sam, None)
-logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {0}.')
+if args.single_object_eval:
+    tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, 0, threshold, sam)
+    logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch 0.')
+else:
+    tol, (eiou, edice), multi_obj = function.validation_sam_multi_obj(args, nice_test_loader, 0, threshold, sam)
+    logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice}, MULTI: {multi_obj} || @ epoch 0.')

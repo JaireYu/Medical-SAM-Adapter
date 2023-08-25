@@ -146,6 +146,9 @@ best_tol = 1e4
 threshold = (0.1, 0.3, 0.5, 0.7, 0.9)
 if args.mod == 'sam_adpt':
     net.eval()
-    tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, start_epoch, threshold, net)
-    logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {start_epoch}.')
-    
+    if args.single_object_eval:
+        tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, start_epoch, threshold, net)
+        logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {start_epoch}.')
+    else:
+        tol, (eiou, edice), multi_obj = function.validation_sam_multi_obj(args, nice_test_loader, start_epoch, threshold, net)
+        logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice}, MULTI: {multi_obj} || @ epoch {start_epoch}.')
