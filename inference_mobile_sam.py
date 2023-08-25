@@ -125,7 +125,7 @@ elif args.dataset == 'Henan_building_refined_v1':
     nice_test_loader = DataLoader(isic_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
     '''end'''
 
-elif args.dataset == 'Multi_Object_v1':
+elif args.dataset == 'Multi_Object_v1' or args.dataset == 'Multi_Object_v2':
     '''buiding data'''
     isic_train_dataset = Multi_Object_v1(args, args.data_path, mode = 'Training', prompt = args.prompt)
     isic_test_dataset = Multi_Object_v1(args, args.data_path, mode = 'Test', prompt=args.prompt)
