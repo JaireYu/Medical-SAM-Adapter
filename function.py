@@ -102,7 +102,7 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
 
                 imgs = torchvision.transforms.Resize((args.image_size,args.image_size))(imgs)
                 masks = torchvision.transforms.Resize((args.out_size,args.out_size))(masks)
-            showp = pt
+            showp = pt[..., [1, 0]]
 
             mask_type = torch.float32
             ind += 1
@@ -279,7 +279,7 @@ def validation_sam(args, val_loader, epoch, net: nn.Module, clean_dir=True):
                     imgs = torchvision.transforms.Resize((args.image_size,args.image_size))(imgs)
                     masks = torchvision.transforms.Resize((args.out_size,args.out_size))(masks)
                 
-                showp = pt
+                showp = pt[..., [1, 0]]
 
                 mask_type = torch.float32
                 ind += 1

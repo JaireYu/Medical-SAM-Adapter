@@ -1160,6 +1160,7 @@ def random_click(mask, point_labels = 1):
         point_labels = max_label
     # max agreement position
     indices = np.argwhere(mask == max_label) 
+    indices = indices[:, ::-1].copy()
     return point_labels, indices[np.random.randint(len(indices))]
 
 
