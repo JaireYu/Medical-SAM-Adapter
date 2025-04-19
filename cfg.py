@@ -46,6 +46,7 @@ def parse_args():
     parser.add_argument('-evl_chunk', type=int, default=None , help='evaluation chunk')
     parser.add_argument('-mid_dim', type=int, default=None , help='middle dim of adapter or the rank of lora matrix')
     parser.add_argument('-multimask_output', type=int, default=1 , help='the number of masks output for multi-class segmentation, set 2 for REFUGE dataset.')
+    parser.add_argument('-prompt', type=str, default='click', help='prompt')
     parser.add_argument(
     '-data_path',
     type=str,
