@@ -31,6 +31,7 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
+from torchvision.ops import masks_to_boxes
 from monai.config import print_config
 from monai.data import (CacheDataset, ThreadDataLoader, decollate_batch,
                         load_decathlon_datalist, set_track_meta)
@@ -1177,6 +1178,25 @@ def random_click(mask, point_labels = 1):
     indices = np.argwhere(mask == max_label) 
     indices = indices[:, ::-1].copy()
     return point_labels, indices[np.random.randint(len(indices))]
+
+def random_gaussian_box(mask, deviation_rate = 0.1, max_offset=20):
+    # check if all masks are black
+    binary_mask = np.array(mask)
+    binary_mask[binary_mask != 0] = 1
+    binary_mask = torch.from_numpy(binary_mask).unsqueeze(0)
+    torch_box = masks_to_boxes(binary_mask)
+    box = torch_box[0].cpu().numpy().tolist()    
+    x_len = box[2] - box[0]
+    y_len = box[3] - box[1]
+    x_offset = np.clip(np.random.normal(loc=0, scale=deviation_rate*x_len, size=2), -max_offset, max_offset)
+    y_offset = np.clip(np.random.normal(loc=0, scale=deviation_rate*y_len, size=2), -max_offset, max_offset)
+    box[0] = min(max(int(box[0] + x_offset[0]), 0), 1023)
+    box[1] = min(max(int(box[1] + y_offset[0]), 0), 1023)
+    box[2] = min(max(int(box[2] + x_offset[1]), 0), 1023)
+    box[3] = min(max(int(box[3] + y_offset[1]), 0), 1023)
+    box = np.array(box)
+    return box
+
 
 
 def generate_click_prompt(img, msk, pt_label = 1):
