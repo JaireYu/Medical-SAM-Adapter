@@ -12,7 +12,7 @@ from utils import random_box, random_click, random_gaussian_box
 
 
 class DEMO(Dataset):
-    def __init__(self, args, data_path , transform = None, transform_msk = None, mode = 'Training',prompt = 'click', plane = False):
+    def __init__(self, args, data_path , transform = None, transform_msk = None, mode = 'Training'):
         if mode == "Training":
             self.image_root = os.path.join(data_path, "test", "images")
             anno_file = os.path.join(data_path, "test", "annotations.json")
@@ -22,7 +22,7 @@ class DEMO(Dataset):
             anno_file = os.path.join(data_path, "test", "annotations.json")
             self.annos = json.load(open(anno_file, 'r'))["annotations"]
         self.mode = mode
-        self.prompt = prompt
+        self.prompt = args.prompt
         self.img_size = args.image_size
 
         self.transform = transform
