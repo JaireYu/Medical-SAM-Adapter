@@ -19,6 +19,7 @@ from .stare import STARE
 from .toothfairy import ToothFairy
 from .wbc import WBC
 from .demo import DEMO
+from .icon import ICON
 
 def get_dataloader(args):
     transform_train = transforms.Compose([
@@ -234,6 +235,15 @@ def get_dataloader(args):
         nice_train_loader = DataLoader(debug_train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
         nice_test_loader = DataLoader(debug_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
         '''end'''
+
+    elif args.dataset == 'icon':
+        '''icon data'''
+        icon_train_dataset = ICON(args, args.data_path, transform = transform_train, transform_msk= transform_train_seg, mode = 'Training')
+        icon_test_dataset = ICON(args, args.data_path, transform = transform_test, transform_msk= transform_test_seg, mode = 'Test')
+
+        nice_train_loader = DataLoader(icon_train_dataset, batch_size=args.b, shuffle=True, num_workers=8, pin_memory=True)
+        nice_test_loader = DataLoader(icon_test_dataset, batch_size=args.b, shuffle=False, num_workers=8, pin_memory=True)
+
 
     else:
         print("the dataset is not supported now!!!")
