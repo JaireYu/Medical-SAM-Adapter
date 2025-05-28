@@ -214,6 +214,13 @@ def train_sam(args, net: nn.Module, optimizer, train_loader,
 
             loss = lossfunc(pred, masks)
 
+            # get current learning rate
+            current_lr = optimizer.param_groups[0]['lr']
+
+            # write to tensorboard
+            writer.add_scalar('Train/Loss', loss.item(), epoch * len(train_loader) + ind)
+            writer.add_scalar('Train/Learning_rate', current_lr, epoch * len(train_loader) + ind)
+
             pbar.set_postfix(**{'loss (batch)': loss.item()})
             epoch_loss += loss.item()
 

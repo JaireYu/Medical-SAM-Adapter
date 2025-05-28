@@ -99,10 +99,14 @@ def main():
 
     for epoch in range(settings.EPOCH):
 
-        if epoch < 5:
+        # eval before training
+        if epoch == 0:
             if args.dataset != 'REFUGE':
                 tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
                 logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
+                writer.add_scalar('eval/IOU', float(eiou), epoch-1)
+                writer.add_scalar('eval/DICE', float(edice), epoch-1)
+                writer.add_scalar('eval/LOSS', float(tol), epoch-1)
             else:
                 tol, (eiou_cup, eiou_disc, edice_cup, edice_disc) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
                 logger.info(f'Total score: {tol}, IOU_CUP: {eiou_cup}, IOU_DISC: {eiou_disc}, DICE_CUP: {edice_cup}, DICE_DISC: {edice_disc} || @ epoch {epoch}.')
@@ -119,6 +123,9 @@ def main():
             if args.dataset != 'REFUGE':
                 tol, (eiou, edice) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
                 logger.info(f'Total score: {tol}, IOU: {eiou}, DICE: {edice} || @ epoch {epoch}.')
+                writer.add_scalar('eval/IOU', float(eiou), epoch)
+                writer.add_scalar('eval/DICE', float(edice), epoch)
+                writer.add_scalar('eval/LOSS', float(tol), epoch)
             else:
                 tol, (eiou_cup, eiou_disc, edice_cup, edice_disc) = function.validation_sam(args, nice_test_loader, epoch, net, writer)
                 logger.info(f'Total score: {tol}, IOU_CUP: {eiou_cup}, IOU_DISC: {eiou_disc}, DICE_CUP: {edice_cup}, DICE_DISC: {edice_disc} || @ epoch {epoch}.')
